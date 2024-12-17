@@ -4,7 +4,7 @@ import pandas as pd
 import time
 
 # Função para ler os dados do SQLite
-def ler_dados_sqlite(db_name="bitcoin_dados.db"):
+def ler_dados_sqlite(db_name="/app/db/bitcoin_dados.db"):
     """Lê os dados do banco SQLite e retorna como DataFrame."""
     conn = sqlite3.connect(db_name)
     query = "SELECT * FROM bitcoin_precos ORDER BY timestamp DESC"

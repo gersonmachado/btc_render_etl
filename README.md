@@ -13,6 +13,10 @@ Aqui está o **README** atualizado, agora usando a **API da Bitcoin na Coinbase*
 
 ---
 
+Esquema do projeto: [app.excalidraw.com](https://app.excalidraw.com/s/8pvW6zbNUnD/9zZctm3OR9f)
+
+---
+
 # 💰 **Data Pipeline: Extração de Dados Bitcoin com ETL em Python**  
 
 ## **Introdução**  
@@ -54,11 +58,17 @@ Desenvolver um pipeline ETL automatizado para consumir dados da **API da Coinbas
 ---
 
 ## **Tecnologias Utilizadas**  
-- **Python 3.8+**  
+- **Python 3.12**  
 - **Bibliotecas**:  
    - `requests`: Para consumir APIs.  
    - `pandas`: Para manipulação e organização de dados.  
    - `sqlite3`: Para armazenamento em banco de dados (opcional).  
+   - `tinydb`: Para armazenamento em banco de dados NoSQL.
+   - `sqlalchemy`: SQLAlchemy é uma biblioteca de mapeamento objeto-relacional para Python.
+   - `psycopg2-binary`: Psycopg é uma biblioteca de acesso a dados PostgreSQL para Python.
+   - `streamlit`: Para criar dashboards interativos.
+   - `time`: Para medir o tempo de execução do programa.
+   - `datetime`: Para manipulação de datas e horas.
 - **Coinbase API**: Para obter o preço da Bitcoin em tempo real.  
 
 ---
@@ -288,3 +298,176 @@ sequenceDiagram
 ---
 
 Se quiser, posso ajustar o fluxo para adicionar mais detalhes ou exemplos práticos. 🚀
+
+## **Banco de dados**
+
+Vamos usar o Postgres, que é um banco de dados open source, gratuito e muito popular.
+
+Para instalar o Postgres, você pode usar o Docker, que é uma ferramenta que facilita a execução de contêineres de software.
+
+Ou você pode usar o servidor de banco de dados da Render ou Azure que é um serviço de cloud computing que facilita a execução de contêineres de software.
+
+### Criando um servidor de banco de dados na Render
+
+A Render é uma plataforma de cloud computing que facilita a execução de contêineres de software.
+
+Para criar um servidor de banco de dados na Render, você pode usar o link: [Render](https://render.com/docs/databases)
+
+Clique em **New** e **Postgres**
+
+Coloque o nome do seu banco de dados, o usuário e a senha.
+
+### Criando a pipeline em Python
+
+---
+
+#### 1. `database.py`
+
+Esse arquivo é responsável por criar a tabela no banco de dados.
+
+O ORM (Object-Relational Mapping) é uma técnica que permite mapear objetos de um programa para tabelas de um banco de dados.
+
+Dessa forma, você não precisa mais usar SQL puro para criar e manipular a tabela.
+
+```python
+class BitcoinPreco(Base):
+    """Define a tabela no banco de dados."""
+    __tablename__ = "bitcoin_precos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    valor = Column(Float, nullable=False)
+    criptomoeda = Column(String(50), nullable=False)  # até 50 caracteres
+    moeda = Column(String(10), nullable=False)        # até 10 caracteres
+    timestamp = Column(DateTime, default=datetime.now)
+```
+
+A classe `BitcoinPreco` define as colunas para uma tabela chamada `bitcoin_precos` no PostgreSQL. Aqui vai o **SQL bruto** que você pode usar para criar a tabela manualmente no PostgreSQL:
+
+```sql
+CREATE TABLE IF NOT EXISTS bitcoin_precos (
+    id SERIAL PRIMARY KEY,
+    valor DOUBLE PRECISION NOT NULL,
+    criptomoeda VARCHAR(50) NOT NULL,
+    moeda VARCHAR(10) NOT NULL,
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Essa instrução **corresponde** à estrutura modelada em `BitcoinPreco` pelo SQLAlchemy. Se você quiser adequar o tamanho de cada `VARCHAR` ou usar outro tipo como `TEXT`, fique à vontade para ajustar conforme suas necessidades.
+
+---
+
+## 2. Arquivo principal (por exemplo, `pipeline_bitcoin_05.py`)
+
+```python
+import os
+import time
+import requests
+from datetime import datetime
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+# Importar Base e BitcoinPreco do database.py
+from database import Base, BitcoinPreco
+
+# Carrega variáveis de ambiente do arquivo .env
+load_dotenv()
+
+# Lê as variáveis separadas do arquivo .env (sem SSL)
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+
+# Monta a URL de conexão ao banco PostgreSQL (sem ?sslmode=...)
+DATABASE_URL = (
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
+    f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+)
+
+# Cria o engine e a sessão
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
+
+def criar_tabela():
+    """Cria a tabela no banco de dados, se não existir."""
+    Base.metadata.create_all(engine)
+    print("Tabela criada/verificada com sucesso!")
+
+def extrair_dados_bitcoin():
+    """Extrai o JSON completo da API da Coinbase."""
+    url = 'https://api.coinbase.com/v2/prices/spot'
+    resposta = requests.get(url)
+    if resposta.status_code == 200:
+        return resposta.json()
+    else:
+        print(f"Erro na API: {resposta.status_code}")
+        return None
+
+def tratar_dados_bitcoin(dados_json):
+    """Transforma os dados brutos da API e adiciona timestamp."""
+    valor = float(dados_json['data']['amount'])
+    criptomoeda = dados_json['data']['base']
+    moeda = dados_json['data']['currency']
+    timestamp = datetime.now()
+    
+    dados_tratados = {
+        "valor": valor,
+        "criptomoeda": criptomoeda,
+        "moeda": moeda,
+        "timestamp": timestamp
+    }
+    return dados_tratados
+
+def salvar_dados_postgres(dados):
+    """Salva os dados no banco PostgreSQL."""
+    session = Session()
+    novo_registro = BitcoinPreco(**dados)
+    session.add(novo_registro)
+    session.commit()
+    session.close()
+    print(f"[{dados['timestamp']}] Dados salvos no PostgreSQL!")
+
+if __name__ == "__main__":
+    criar_tabela()
+    print("Iniciando ETL com atualização a cada 15 segundos... (CTRL+C para interromper)")
+
+    while True:
+        try:
+            dados_json = extrair_dados_bitcoin()
+            if dados_json:
+                dados_tratados = tratar_dados_bitcoin(dados_json)
+                print("Dados Tratados:", dados_tratados)
+                salvar_dados_postgres(dados_tratados)
+            time.sleep(15)
+        except KeyboardInterrupt:
+            print("\nProcesso interrompido pelo usuário. Finalizando...")
+            break
+        except Exception as e:
+            print(f"Erro durante a execução: {e}")
+            time.sleep(15)
+```
+
+---
+
+## 3. `.env` (Exemplo)
+
+Neste caso, seu arquivo `.env` também não conterá SSL:
+
+```bash
+POSTGRES_USER=jornadadedados
+POSTGRES_PASSWORD=mudar123
+POSTGRES_HOST=bancodedadospostgres.postgres.database.azure.com
+POSTGRES_PORT=5432
+POSTGRES_DB=postgres
+```
+---
+
+### Como funciona agora
+
+1. **`database.py`**: contém apenas a definição de `Base` e do modelo `BitcoinPreco`.
+2. **`exemplo_05.py`** (ou outro nome principal): faz o ETL, cria a tabela usando `Base`, e salva os dados usando a instância da `Session`.  
+
+Com isso, você removeu completamente a parte de SSL.

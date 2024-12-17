@@ -1,6 +1,6 @@
 import requests
 
-def obter_preco_bitcoin():
+def extrair_dados_bitcoin():
     """Obtém o preço atual do Bitcoin na Coinbase."""
     url = 'https://api.coinbase.com/v2/prices/spot'
     resposta = requests.get(url)
@@ -8,4 +8,4 @@ def obter_preco_bitcoin():
     return dados
 
 if __name__ == "__main__":
-    print(obter_preco_bitcoin())
+    print(extrair_dados_bitcoin())

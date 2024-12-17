@@ -12,14 +12,11 @@ def tratar_dados_bitcoin(dados_json):
     valor = dados_json['data']['amount']
     criptomoeda = dados_json['data']['base']
     moeda = dados_json['data']['currency']
-        
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+                
     dados_tratados = [{
             "valor": valor,
             "criptomoeda": criptomoeda,
-            "moeda": moeda,
-            "timestamp": timestamp
+            "moeda": moeda
         }]
         
     return dados_tratados
@@ -29,3 +26,4 @@ if __name__ == "__main__":
     # Extração dos dados
     dados_json = extrair_dados_bitcoin()
     dados_tratados = tratar_dados_bitcoin(dados_json)
+    print(dados_tratados)

@@ -1,27 +1,28 @@
 import os
 import time
 import requests
+import logging
+import logfire
 from datetime import datetime
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
-# Integração com Logfire
-import logging
-import logfire
 from logging import basicConfig, getLogger
-# Configura o Logfire e adiciona o handler
+
+# ------------------------------------------------------
+# Configuração Logfire
 logfire.configure()
 basicConfig(handlers=[logfire.LogfireLoggingHandler()])
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
+logfire.instrument_requests()
 
+# ------------------------------------------------------
 # Importar Base e BitcoinPreco do database.py
 from database import Base, BitcoinPreco
 
 # Carrega variáveis de ambiente do arquivo .env
 load_dotenv()
-
 
 # Lê as variáveis separadas do arquivo .env
 POSTGRES_USER = os.getenv("POSTGRES_USER")
@@ -84,21 +85,39 @@ def salvar_dados_postgres(dados):
     finally:
         session.close()
 
+def pipeline_bitcoin():
+    """Executa a pipeline de ETL do Bitcoin com spans do Logfire."""
+    with logfire.span("Executando pipeline ETL Bitcoin"):
+        
+        with logfire.span("Extrair Dados da API Coinbase"):
+            dados_json = extrair_dados_bitcoin()
+        
+        if not dados_json:
+            logger.error("Falha na extração dos dados. Abortando pipeline.")
+            return
+        
+        with logfire.span("Tratar Dados do Bitcoin"):
+            dados_tratados = tratar_dados_bitcoin(dados_json)
+        
+        with logfire.span("Salvar Dados no Postgres"):
+            salvar_dados_postgres(dados_tratados)
+
+        # Exemplo de log final com placeholders
+        logger.info(
+            f"Pipeline finalizada com sucesso!"
+        )
+
 if __name__ == "__main__":
     criar_tabela()
-    logger.info("Iniciando ETL com atualização a cada 15 segundos... (CTRL+C para interromper)")
+    logger.info("Iniciando pipeline ETL com atualização a cada 15 segundos... (CTRL+C para interromper)")
 
     while True:
         try:
-            dados_json = extrair_dados_bitcoin()
-            if dados_json:
-                dados_tratados = tratar_dados_bitcoin(dados_json)
-                logger.info(f"Dados Tratados: {dados_tratados}")
-                salvar_dados_postgres(dados_tratados)
+            pipeline_bitcoin()
             time.sleep(15)
         except KeyboardInterrupt:
             logger.info("Processo interrompido pelo usuário. Finalizando...")
             break
         except Exception as e:
-            logger.error(f"Erro durante a execução: {e}")
+            logger.error(f"Erro inesperado durante a pipeline: {e}")
             time.sleep(15)

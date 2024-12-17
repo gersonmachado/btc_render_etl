@@ -53,7 +53,7 @@ def main():
 
         st.subheader("🔢 Estatísticas Gerais")
         col1, col2, col3 = st.columns(3)
-        col1.metric("Preço Atual", f"${df['valor'].iloc[0]:,.2f}")
+        col1.metric("Preço Atual", f"${df['valor'].iloc[-1]:,.2f}")
         col2.metric("Preço Máximo", f"${df['valor'].max():,.2f}")
         col3.metric("Preço Mínimo", f"${df['valor'].min():,.2f}")
     else:

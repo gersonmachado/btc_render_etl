@@ -1,111 +1,74 @@
 import requests
-import pandas as pd
+import sqlite3
+from tinydb import TinyDB
 from datetime import datetime
-import os
 
-# Caminho do arquivo CSV
-CAMINHO_ARQUIVO = "preco_bitcoin.csv"
+def extrair_dados_bitcoin():
+    """Extrai o JSON completo da API da Coinbase."""
+    url = 'https://api.coinbase.com/v2/prices/spot'
+    resposta = requests.get(url)
+    return resposta.json()
 
-# EXTRAÇÃO
-def extrair_preco_bitcoin_usd():
-    """
-    Extrai o preço atual do Bitcoin em USD usando a API pública da Coinbase.
-    """
-    url = 'https://api.coinbase.com/v2/prices/spot?currency=USD'
-    try:
-        resposta = requests.get(url)
-        resposta.raise_for_status()
-        preco_usd = float(resposta.json()['data']['amount'])
-        print(f"Preço do Bitcoin em USD: ${preco_usd:.2f}")
-        return preco_usd
-    except Exception as e:
-        print(f"Erro ao extrair preço do Bitcoin (USD): {e}")
-        return None
+def tratar_dados_bitcoin(dados_json):
+    """Transforma os dados brutos da API e adiciona timestamp."""
+    valor = float(dados_json['data']['amount'])
+    criptomoeda = dados_json['data']['base']
+    moeda = dados_json['data']['currency']
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def extrair_cotacao_usd_brl(token):
-    """
-    Extrai a cotação do dólar (USD) para real (BRL) usando a API da Brapi.
-    """
-    url = f'https://brapi.dev/api/v2/currency?currency=USD-BRL&token={token}'
-    try:
-        resposta = requests.get(url)
-        resposta.raise_for_status()
-        cotacao = float(resposta.json()['currency'][0]['bidPrice'])
-        print(f"Cotação USD-BRL: R${cotacao:.2f}")
-        return cotacao
-    except Exception as e:
-        print(f"Erro ao extrair cotação USD-BRL: {e}")
-        return None
-
-# TRANSFORMAÇÃO
-def transformar_dados(preco_usd, cotacao_usd_brl, preco_anterior=None):
-    """
-    Transforma os dados extraídos:
-    - Converte o preço de USD para BRL.
-    - Adiciona timestamp atual.
-    - Calcula a variação percentual em relação ao preço anterior.
-    """
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    preco_brl = round(preco_usd * cotacao_usd_brl, 2)
-    variacao = 0.0
-    if preco_anterior:
-        variacao = ((preco_brl - preco_anterior) / preco_anterior) * 100
-
-    dados_transformados = {
-        "data_hora": timestamp,
-        "preco_usd": round(preco_usd, 2),
-        "cotacao_usd_brl": round(cotacao_usd_brl, 2),
-        "preco_brl": preco_brl,
-        "variacao_percentual": round(variacao, 2)
+    # Estrutura os dados em formato de lista de dicionários
+    dados_tratados = {
+        "valor": valor,
+        "criptomoeda": criptomoeda,
+        "moeda": moeda,
+        "timestamp": timestamp
     }
-    return dados_transformados
+    return dados_tratados
 
-# CARGA
-def salvar_dados_csv(dados):
-    """
-    Salva os dados transformados em um arquivo CSV.
-    - Se o arquivo não existir, cria com cabeçalho.
-    - Caso exista, adiciona uma nova linha.
-    """
-    colunas = ["data_hora", "preco_usd", "cotacao_usd_brl", "preco_brl", "variacao_percentual"]
-    if not os.path.exists(CAMINHO_ARQUIVO):
-        df = pd.DataFrame([dados])
-        df.to_csv(CAMINHO_ARQUIVO, index=False, sep=';', mode='w', header=True)
-    else:
-        df = pd.DataFrame([dados])
-        df.to_csv(CAMINHO_ARQUIVO, index=False, sep=';', mode='a', header=False)
-    print(f"Dados salvos: {dados}")
+def salvar_dados_sqlite(dados, db_name="bitcoin_dados.db"):
+    """Salva os dados em um banco SQLite."""
+    # Conectar ao banco SQLite
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    
+    # Criar a tabela, se não existir
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bitcoin_precos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            valor REAL,
+            criptomoeda TEXT,
+            moeda TEXT,
+            timestamp TEXT
+        )
+    ''')
+    
+    # Inserir os dados no banco
+    cursor.execute('''
+        INSERT INTO bitcoin_precos (valor, criptomoeda, moeda, timestamp)
+        VALUES (?, ?, ?, ?)
+    ''', (dados['valor'], dados['criptomoeda'], dados['moeda'], dados['timestamp']))
+    
+    conn.commit()
+    conn.close()
+    print("Dados salvos no SQLite!")
 
-# PIPELINE
-def executar_pipeline(token_brapi):
-    """
-    Executa o pipeline ETL:
-    - Extrai o preço do Bitcoin em USD.
-    - Extrai a cotação USD-BRL.
-    - Transforma os dados, convertendo para BRL e adicionando variação.
-    - Carrega os dados no CSV.
-    """
-    preco_usd = extrair_preco_bitcoin_usd()
-    cotacao_usd_brl = extrair_cotacao_usd_brl(token_brapi)
+def salvar_dados_tinydb(dados, db_name="bitcoin_dados.json"):
+    """Salva os dados em um banco NoSQL usando TinyDB."""
+    db = TinyDB(db_name)
+    db.insert(dados)
+    print("Dados salvos no TinyDB!")
 
-    if preco_usd is not None and cotacao_usd_brl is not None:
-        # Carregar preço anterior, se disponível
-        if os.path.exists(CAMINHO_ARQUIVO):
-            df = pd.read_csv(CAMINHO_ARQUIVO, sep=';')
-            preco_anterior = df.iloc[-1]['preco_brl']
-        else:
-            preco_anterior = None
-
-        # Transformar os dados
-        dados_transformados = transformar_dados(preco_usd, cotacao_usd_brl, preco_anterior)
-
-        # Salvar os dados no CSV
-        salvar_dados_csv(dados_transformados)
-    else:
-        print("Pipeline interrompido devido a erro na extração.")
-
-# EXECUÇÃO DO PIPELINE
 if __name__ == "__main__":
-    # Substitua 'SEU_TOKEN' pelo token da API Brapi
-    TOKEN_BRAPI = "7HTpCQf9z7qUKrwBJftoTh"
-    executar_pipeline(TOKEN_BRAPI)
+    # Extração e tratamento dos dados
+    dados_json = extrair_dados_bitcoin()
+    dados_tratados = tratar_dados_bitcoin(dados_json)
+    
+    # Mostrar os dados tratados
+    print("Dados Tratados:")
+    print(dados_tratados)
+    
+    # Salvar no SQLite
+    salvar_dados_sqlite(dados_tratados)
+    
+    # Salvar no TinyDB
+    salvar_dados_tinydb(dados_tratados)

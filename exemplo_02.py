@@ -1,83 +1,74 @@
 import requests
-import pandas as pd
+import sqlite3
+from tinydb import TinyDB
 from datetime import datetime
-import os
 
-# Caminho do arquivo CSV
-CAMINHO_ARQUIVO = "preco_bitcoin.csv"
-
-# EXTRAÇÃO
-def extrair_preco_bitcoin():
-    """
-    Extrai o preço atual do Bitcoin usando a API pública da Coinbase.
-    Retorna o preço como float.
-    """
-    url = 'https://api.coinbase.com/v2/prices/spot?currency=USD'
+def extrair_dados_bitcoin():
+    """Extrai o JSON completo da API da Coinbase."""
+    url = 'https://api.coinbase.com/v2/prices/spot'
     resposta = requests.get(url)
-    preco = float(resposta.json()['data']['amount'])
-    print(f"Preço atual do Bitcoin: ${preco:.2f} USD")
-    return preco
+    return resposta.json()
 
-# TRANSFORMAÇÃO
-def transformar_dados(preco_atual, preco_anterior=None):
-    """
-    Transforma os dados extraídos.
-    - Adiciona timestamp atual.
-    - Calcula a variação percentual em relação ao preço anterior.
-    """
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    variacao = 0.0
-    if preco_anterior:
-        variacao = ((preco_atual - preco_anterior) / preco_anterior) * 100
+def tratar_dados_bitcoin(dados_json):
+    """Transforma os dados brutos da API e adiciona timestamp."""
+    valor = float(dados_json['data']['amount'])
+    criptomoeda = dados_json['data']['base']
+    moeda = dados_json['data']['currency']
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    dados_transformados = {
-        "data_hora": timestamp,
-        "preco_usd": round(preco_atual, 2),
-        "variacao_percentual": round(variacao, 2)
+    # Estrutura os dados em formato de lista de dicionários
+    dados_tratados = {
+        "valor": valor,
+        "criptomoeda": criptomoeda,
+        "moeda": moeda,
+        "timestamp": timestamp
     }
-    return dados_transformados
+    return dados_tratados
 
-# CARGA
-def salvar_dados_csv(dados):
-    """
-    Salva os dados transformados em um arquivo CSV.
-    - Se o arquivo não existir, cria com cabeçalho.
-    - Caso exista, adiciona uma nova linha.
-    """
-    colunas = ["data_hora", "preco_usd", "variacao_percentual"]
-    if not os.path.exists(CAMINHO_ARQUIVO):
-        df = pd.DataFrame([dados])
-        df.to_csv(CAMINHO_ARQUIVO, index=False, sep=';', mode='w', header=True)
-    else:
-        df = pd.DataFrame([dados])
-        df.to_csv(CAMINHO_ARQUIVO, index=False, sep=';', mode='a', header=False)
-    print(f"Dados salvos: {dados}")
+def salvar_dados_sqlite(dados, db_name="bitcoin_dados.db"):
+    """Salva os dados em um banco SQLite."""
+    # Conectar ao banco SQLite
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    
+    # Criar a tabela, se não existir
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bitcoin_precos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            valor REAL,
+            criptomoeda TEXT,
+            moeda TEXT,
+            timestamp TEXT
+        )
+    ''')
+    
+    # Inserir os dados no banco
+    cursor.execute('''
+        INSERT INTO bitcoin_precos (valor, criptomoeda, moeda, timestamp)
+        VALUES (?, ?, ?, ?)
+    ''', (dados['valor'], dados['criptomoeda'], dados['moeda'], dados['timestamp']))
+    
+    conn.commit()
+    conn.close()
+    print("Dados salvos no SQLite!")
 
-# PIPELINE
-def executar_pipeline():
-    """
-    Executa o pipeline ETL:
-    - Extrai o preço atual do Bitcoin.
-    - Transforma os dados, adicionando timestamp e variação.
-    - Carrega os dados em um arquivo CSV.
-    """
-    preco_atual = extrair_preco_bitcoin()
-    if preco_atual is not None:
-        # Carregar preço anterior, se disponível
-        if os.path.exists(CAMINHO_ARQUIVO):
-            df = pd.read_csv(CAMINHO_ARQUIVO, sep=';')
-            preco_anterior = df.iloc[-1]['preco_usd']
-        else:
-            preco_anterior = None
+def salvar_dados_tinydb(dados, db_name="bitcoin_dados.json"):
+    """Salva os dados em um banco NoSQL usando TinyDB."""
+    db = TinyDB(db_name)
+    db.insert(dados)
+    print("Dados salvos no TinyDB!")
 
-        # Transformar os dados
-        dados_transformados = transformar_dados(preco_atual, preco_anterior)
-
-        # Salvar os dados no CSV
-        salvar_dados_csv(dados_transformados)
-    else:
-        print("Pipeline interrompido devido a erro na extração.")
-
-# EXECUÇÃO DO PIPELINE
 if __name__ == "__main__":
-    executar_pipeline()
+    # Extração e tratamento dos dados
+    dados_json = extrair_dados_bitcoin()
+    dados_tratados = tratar_dados_bitcoin(dados_json)
+    
+    # Mostrar os dados tratados
+    print("Dados Tratados:")
+    print(dados_tratados)
+    
+    # Salvar no SQLite
+    salvar_dados_sqlite(dados_tratados)
+    
+    # Salvar no TinyDB
+    salvar_dados_tinydb(dados_tratados)

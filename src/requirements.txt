@@ -1,0 +1,4 @@
+requests
+tinydb
+sqlalchemy 
+psycopg2-binary

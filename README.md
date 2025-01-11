@@ -470,4 +470,5 @@ POSTGRES_DB=postgres
 1. **`database.py`**: contém apenas a definição de `Base` e do modelo `BitcoinPreco`.
 2. **`exemplo_05.py`** (ou outro nome principal): faz o ETL, cria a tabela usando `Base`, e salva os dados usando a instância da `Session`.  
 
-Com isso, você removeu completamente a parte de SSL.
+Com isso, você removeu completamente a parte de SSL.#   b t c _ r e n d e r _ e t l  
+ 

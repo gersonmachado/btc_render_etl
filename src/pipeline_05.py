@@ -70,7 +70,7 @@ def salvar_dados_postgres(dados):
 
 if __name__ == "__main__":
     criar_tabela()
-    print("Iniciando ETL com atualização a cada 15 segundos... (CTRL+C para interromper)")
+    print("Iniciando ETL com atualização a cada 5 minutos... (CTRL+C para interromper)")
 
     while True:
         try:
@@ -79,7 +79,7 @@ if __name__ == "__main__":
                 dados_tratados = tratar_dados_bitcoin(dados_json)
                 print("Dados Tratados:", dados_tratados)
                 salvar_dados_postgres(dados_tratados)
-            time.sleep(15)
+            time.sleep(300)
         except KeyboardInterrupt:
             print("\nProcesso interrompido pelo usuário. Finalizando...")
             break
